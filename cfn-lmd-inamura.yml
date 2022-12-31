@@ -1,0 +1,166 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description:
+  Lambda Create
+# ------------------------------------------------------------#
+#  Metadata
+# ------------------------------------------------------------#
+Metadata:
+  "AWS::CloudFormation::Interface":
+    ParameterGroups:
+      - Label:
+          default: "Lambda Configuration"
+        Parameters:
+        - FunctionName
+        - Description
+        - Handler
+        - MemorySize
+        - Runtime
+        - Timeout
+        - TagsName
+
+# ------------------------------------------------------------#
+#  InputParameters
+# ------------------------------------------------------------#
+Parameters:
+  FunctionName:
+    Type: String
+    Default: "cfn-lmd-inamura"
+  Description:
+    Type: String
+    Default: "cfn-lmd-inamura"
+  Handler:
+    Type: String
+    Default: "index.lambda_handler"
+  MemorySize:
+    Type: String
+    Default: "128"
+  Runtime:
+    Type: String
+    Default: "python3.9"
+  Timeout:
+    Type: String
+    Default: "10"
+  TagsName:
+    Type: String
+    Description: UserName
+    Default: "inamura"
+# ------------------------------------------------------------#
+#  Resources
+# ------------------------------------------------------------#
+Resources:
+# ------------------------------------------------------------#
+#  Lambda
+# ------------------------------------------------------------#
+  Lambda:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+          import datetime
+          import urllib.parse
+          import json
+
+          print('Loading function')
+
+          sns_client = boto3.client('sns')
+          SNS = os.environ['SNS']
+          Subject = "【件名】SNS通知 "
+          Message = "S3にオブジェクトが作成されました"
+
+          def lambda_handler(event, context):
+              for record in event['Records']:
+                  payload = record["body"]
+                  events = json.loads(payload)
+
+                  bucket = urllib.parse.unquote_plus(events['Records'][0]['s3']['bucket']['name'], encoding='utf-8')
+                  key = urllib.parse.unquote_plus(events['Records'][0]['s3']['object']['key'], encoding='utf-8')
+                  
+                  print("BUCKET NAME:" + str(bucket))
+                  print("OBJECT NAME:" + str(key))
+
+          
+                  date = datetime.datetime.now()
+                  d = date.strftime('%Y%m%d %H:%M:%S')
+
+                  params = {
+                  'TopicArn': SNS,
+                  'Subject': Subject + str(d),
+                  'Message': Message + "\n\n" + "S3バケット名   :" + str(bucket) + "\n" + "オブジェクト名:" + str(key)
+                  }
+              
+                  sns_client.publish(**params)
+
+      Description: !Ref Description
+      FunctionName: !Ref FunctionName
+      Handler: !Ref Handler 
+      MemorySize: !Ref MemorySize
+      Runtime: !Ref Runtime
+      Timeout: !Ref Timeout
+      Role: !GetAtt LambdaRole.Arn
+      Environment:
+        Variables:
+          SNS: !ImportValue cfn-sns-topic-inamura-arn
+          TZ: "Asia/Tokyo"
+          
+      Tags:
+        - Key: "User"
+          Value: !Ref TagsName
+
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${FunctionName}-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Action: "sts:AssumeRole"
+            Principal:
+              Service: lambda.amazonaws.com
+      Policies:
+        - PolicyName: !Sub "${FunctionName}-policy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                  - "logs:CreateLogGroup"
+                Resource: !Sub "arn:${AWS::Partition}:logs:*:*:*"
+
+              - Effect: "Allow"
+                Action:
+                  - "sns:Publish" 
+                Resource: "*"
+
+              - Effect: Allow
+                Action:
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:ReceiveMessage
+                Resource:
+                  - !ImportValue cfn-sqs-inamura-queuearn
+
+  EventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties: 
+      Enabled: true
+      EventSourceArn: !ImportValue cfn-sqs-inamura-queuearn
+      FunctionName: !GetAtt Lambda.Arn
+      BatchSize: 1
+
+# ------------------------------------------------------------#
+# Output Parameters
+#------------------------------------------------------------#          
+Outputs:
+  LambdaArn:
+    Value: !GetAtt Lambda.Arn
+    Export:
+      Name: !Sub "${FunctionName}-arn"
+  LambdaName:
+    Value: !Ref FunctionName
+    Export:
+      Name: !Sub "${FunctionName}-name"
