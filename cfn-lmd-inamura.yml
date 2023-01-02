@@ -139,6 +139,11 @@ Resources:
                   - "sns:Publish" 
                 Resource: "*"
 
+              - Effect: "Allow"
+                Action:
+                  - "s3:*" 
+                Resource: "*"
+
   TriggerLambdaPermission:
     Type: "AWS::Lambda::Permission"
     Properties:
