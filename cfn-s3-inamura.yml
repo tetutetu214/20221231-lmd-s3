@@ -18,7 +18,6 @@ Metadata:
         - ExpirationInDays
         - EventBridgeConfiguration
         - Prefix
-        - Suffix
         - TagsName
 
 # ------------------------------------------------------------#
@@ -66,10 +65,6 @@ Parameters:
     Type: String
     Description: Lambdafunction Trigger Prefix.
     Default: "infra"
-  Suffix:
-    Type: String
-    Description: Lambdafunction Trigger Suffix
-    Default: "zip"
   TagsName:
     Type: String
     Description: UserName
@@ -107,8 +102,6 @@ Resources:
                 Rules:
                   - Name: prefix
                     Value: !Ref Prefix
-                  - Name: suffix
-                    Value: !Ref Suffix
             Function: !ImportValue cfn-lmd-inamura-arn
       Tags:
         - Key: "User"
